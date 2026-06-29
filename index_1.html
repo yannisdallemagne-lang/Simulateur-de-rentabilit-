@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Simulateur de rentabilité — Selva Village</title>
+<style>
+  html,body{margin:0;padding:0;background:#F1EDE3;}
+  #root{min-height:100vh;}
+</style>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState, useMemo } = React;
+
+
+// ────────────────────────────────────────────────────────────
+//  Selva Village (Aldeia) — Simulateur de rentabilité
+//  Source : RECAP_SELVA (feuilles LOCATION + INVEST). Taux 37 ฿/€.
+//  Prévisionnel locatif Selva = villas 2 & 3 ch. ; 1 ch. estimé.
+// ────────────────────────────────────────────────────────────
+
+const RATE = 37; // ฿ par €
+const toEur = (thb) => Math.round(thb / RATE);
+
+// Données brutes en ฿ (RECAP_SELVA)
+const VILLAS = {
+  1: { priceTHB: 3900000, ratesTHB: [3000, 3500, 4000], estimate: true },
+  2: { priceTHB: 4900000, ratesTHB: [3500, 4000, 4500] },
+  3: { priceTHB: 5900000, ratesTHB: [4500, 5000, 6000] },
+};
+const FEES_REG_THB = 200000; // frais & enregistrement
+const LEASE_THB = 300000;    // bail foncier 5 ans
+const SEASON_DAYS = [150, 150, 55];
+const SEASON_OCC = [60, 60, 80];
+const FEES_THB = { maint: 50000, land: 70000, common: 36000 }; // charges annuelles
+
+function villaData(b) {
+  const v = VILLAS[b];
+  return {
+    price: toEur(v.priceTHB),
+    feesReg: toEur(FEES_REG_THB),
+    lease: toEur(LEASE_THB),
+    seasons: v.ratesTHB.map((r, i) => ({ days: SEASON_DAYS[i], occ: SEASON_OCC[i], rate: toEur(r) })),
+    fees: { maint: toEur(FEES_THB.maint), land: toEur(FEES_THB.land), common: toEur(FEES_THB.common) },
+  };
+}
+
+const C = {
+  paper: "#F1EDE3", card: "#FBFAF5", ink: "#16201B", forest: "#0E3A2F",
+  forestSoft: "#1C5345", brass: "#B5832F", brassSoft: "#C9A35C",
+  ocean: "#2E7D8A", muted: "#62716A", line: "#DED7C7", red: "#9C4A3C", amber: "#9A6A18",
+};
+
+const T = {
+  fr: {
+    eyebrow: "Selva Village · Aldeia · Koh Samui",
+    title: "Simulateur de rentabilité",
+    sub: "Estimez le revenu locatif net de votre villa, en toute transparence.",
+    yourVilla: "Votre villa", bedrooms: "Chambres",
+    invest: "Investissement", price: "Prix de la villa",
+    feesReg: "Frais & enregistrement", lease: "Bail foncier (5 ans)", totalInvest: "Investissement total",
+    income: "Revenus locatifs",
+    estimate1br: "Tarifs 1 chambre estimés — le prévisionnel Selva couvre les villas 2 et 3 chambres.",
+    yearLabel: "Année · 365 jours", vacant: "Hors location",
+    days: "j", occLabel: "Occupation", rateLabel: "Tarif / nuit", openDays: "Jours d'ouverture",
+    seasonLow: "Basse saison", seasonHigh: "Haute saison", seasonPeak: "Pic",
+    costs: "Charges annuelles",
+    fMaint: "Entretien (piscine & jardin)", fLand: "Location du terrain", fCommon: "Charges communes",
+    conciergeTitle: "Conciergerie", conciergeHint: "Gestion locative complète — 15 % des revenus locatifs.", yes: "Oui", no: "Non",
+    fixedCharges: "Charges fixes", conciergeLine: "Conciergerie (15 %)",
+    result: "Votre rendement net estimé",
+    avgOcc: "Occupation moyenne", nightsYr: "nuits / an",
+    grossLabel: "Revenu locatif brut", netLabel: "Revenu net annuel",
+    month: "mois", payback: "Retour sur investissement", years: "ans",
+    breakdown: "Du brut au net", of: "du brut",
+    note: "Données issues du récapitulatif Selva Village, converties au taux de 37 ฿/€. Le prévisionnel locatif Selva couvre les villas 2 et 3 chambres ; le 1 chambre est estimé. Estimation indicative, hors fiscalité.",
+  },
+  en: {
+    eyebrow: "Selva Village · Aldeia · Koh Samui",
+    title: "Rental yield simulator",
+    sub: "Estimate your villa's net rental income — fully transparent.",
+    yourVilla: "Your villa", bedrooms: "Bedrooms",
+    invest: "Investment", price: "Villa price",
+    feesReg: "Fees & registration", lease: "Land lease (5 yrs)", totalInvest: "Total investment",
+    income: "Rental income",
+    estimate1br: "1-bedroom rates estimated — Selva's forecast covers 2 and 3-bedroom villas.",
+    yearLabel: "Year · 365 days", vacant: "Not rented",
+    days: "d", occLabel: "Occupancy", rateLabel: "Nightly rate", openDays: "Open days",
+    seasonLow: "Low season", seasonHigh: "High season", seasonPeak: "Peak",
+    costs: "Annual costs",
+    fMaint: "Upkeep (pool & garden)", fLand: "Land rental", fCommon: "Common area fees",
+    conciergeTitle: "Concierge service", conciergeHint: "Full rental management — 15% of rental income.", yes: "Yes", no: "No",
+    fixedCharges: "Fixed costs", conciergeLine: "Concierge (15%)",
+    result: "Your estimated net yield",
+    avgOcc: "Average occupancy", nightsYr: "nights / yr",
+    grossLabel: "Gross rental income", netLabel: "Net annual income",
+    month: "mo", payback: "Payback period", years: "yrs",
+    breakdown: "From gross to net", of: "of gross",
+    note: "Data from the Selva Village recap, converted at 37 ฿/€. Selva's rental forecast covers 2 and 3-bedroom villas; the 1-bedroom is estimated. Indicative estimate, before tax.",
+  },
+};
+
+function App() {
+  const [lang, setLang] = useState("fr");
+  const t = T[lang];
+
+  const [bedrooms, setBedrooms] = useState(3);
+  const [price, setPrice] = useState(() => villaData(3).price);
+  const [feesReg, setFeesReg] = useState(() => villaData(3).feesReg);
+  const [lease, setLease] = useState(() => villaData(3).lease);
+  const [seasons, setSeasons] = useState(() => villaData(3).seasons);
+  const [fees, setFees] = useState(() => villaData(3).fees);
+  const [concierge, setConcierge] = useState(false);
+
+  function setVilla(b) {
+    const d = villaData(b);
+    setBedrooms(b);
+    setPrice(d.price); setFeesReg(d.feesReg); setLease(d.lease);
+    setSeasons(d.seasons); setFees(d.fees);
+  }
+  function editSeason(i, key, val) {
+    setSeasons((p) => p.map((s, j) => (j === i ? { ...s, [key]: val } : s)));
+  }
+
+  const seasonNames = [t.seasonLow, t.seasonHigh, t.seasonPeak];
+  const seasonColors = [C.forestSoft, C.ocean, C.brass];
+
+  const m = useMemo(() => {
+    const invest = price + feesReg + lease;
+    const nights = seasons.reduce((a, s) => a + s.days * (s.occ / 100), 0);
+    const totalDays = seasons.reduce((a, s) => a + s.days, 0);
+    const perSeason = seasons.map((s) => s.days * (s.occ / 100) * s.rate);
+    const gross = perSeason.reduce((a, x) => a + x, 0);
+    const fixed = fees.maint + fees.land + fees.common;
+    const conciergeFee = concierge ? gross * 0.15 : 0;
+    const charges = fixed + conciergeFee;
+    const net = gross - charges;
+    const yieldPct = invest > 0 ? (net / invest) * 100 : 0;
+    const payback = net > 0 ? invest / net : 0;
+    const avgOcc = totalDays > 0 ? (nights / totalDays) * 100 : 0;
+    return { invest, nights, perSeason, gross, fixed, conciergeFee, charges, net, yieldPct, payback, avgOcc };
+  }, [price, feesReg, lease, seasons, fees, concierge]);
+
+  const nf = (n) => new Intl.NumberFormat(lang === "fr" ? "fr-FR" : "en-GB",
+    { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(Math.round(n));
+
+  const chargesShare = m.gross > 0 ? (m.charges / m.gross) * 100 : 0;
+  const netShare = Math.max(0, 100 - chargesShare);
+
+  return (
+    <div style={{ minHeight: "100%", background: C.paper, color: C.ink, fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=DM+Sans:wght@400;500;600&display=swap');
+        * { box-sizing: border-box; }
+        .sv-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 99px; outline: none; margin: 2px 0; }
+        .sv-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 3px solid ${C.forest}; box-shadow: 0 1px 4px rgba(0,0,0,.22); cursor: pointer; transition: transform .12s ease; }
+        .sv-slider::-webkit-slider-thumb:hover { transform: scale(1.15); }
+        .sv-slider::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 3px solid ${C.forest}; cursor: pointer; }
+        .sv-num { width: 100%; border: 1px solid ${C.line}; background: #fff; border-radius: 9px; padding: 8px; font: 600 14px 'DM Sans', sans-serif; color: ${C.forest}; text-align: right; }
+        .sv-num:focus { outline: 2px solid ${C.brass}; outline-offset: 1px; }
+        .sv-daysin { width: 52px; border: 1px solid ${C.line}; background: #fff; border-radius: 7px; padding: 3px 4px; font: 600 13px 'DM Sans'; color: ${C.forest}; text-align: center; }
+        .sv-btn:focus-visible, .sv-seg:focus-visible, .sv-slider:focus-visible::-webkit-slider-thumb { outline: 2px solid ${C.brass}; outline-offset: 2px; }
+        @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+      `}</style>
+
+      <div style={{ maxWidth: 980, margin: "0 auto", padding: "clamp(20px,4vw,44px)" }}>
+        <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 28 }}>
+          <div>
+            <div style={{ fontSize: 12, letterSpacing: ".14em", textTransform: "uppercase", color: C.brass, fontWeight: 600, marginBottom: 10 }}>{t.eyebrow}</div>
+            <h1 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: "clamp(28px,5vw,44px)", lineHeight: 1.04, margin: 0, color: C.forest, letterSpacing: "-.01em" }}>{t.title}</h1>
+            <p style={{ margin: "12px 0 0", color: C.muted, maxWidth: 460, fontSize: 15.5, lineHeight: 1.5 }}>{t.sub}</p>
+          </div>
+          <div style={{ display: "flex", border: `1px solid ${C.line}`, borderRadius: 99, overflow: "hidden", flexShrink: 0, background: C.card }}>
+            {["fr", "en"].map((l) => (
+              <button key={l} className="sv-btn" onClick={() => setLang(l)}
+                style={{ border: "none", cursor: "pointer", padding: "8px 14px", fontSize: 13, fontWeight: 600, fontFamily: "inherit",
+                  background: lang === l ? C.forest : "transparent", color: lang === l ? "#fff" : C.muted }}>{l.toUpperCase()}</button>
+            ))}
+          </div>
+        </header>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 20, alignItems: "start" }}>
+          {/* ── INPUTS ── */}
+          <section style={cardStyle()}>
+            <SectionTitle>{t.yourVilla}</SectionTitle>
+            <Field>
+              <Label>{t.bedrooms}</Label>
+              <Segmented options={[1, 2, 3]} value={bedrooms} onChange={setVilla} render={(v) => v} />
+            </Field>
+
+            <div style={{ height: 1, background: C.line, margin: "20px 0 16px" }} />
+            <SectionTitle>{t.invest}</SectionTitle>
+            <FeeRow label={t.price} value={price} onChange={setPrice} />
+            <FeeRow label={t.feesReg} value={feesReg} onChange={setFeesReg} />
+            <FeeRow label={t.lease} value={lease} onChange={setLease} />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", borderTop: `1px solid ${C.line}`, marginTop: 10, paddingTop: 12 }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>{t.totalInvest}</span>
+              <span style={{ fontFamily: "'Fraunces', serif", fontSize: 24, fontWeight: 600, color: C.forest }}>{nf(m.invest)}</span>
+            </div>
+
+            <div style={{ height: 1, background: C.line, margin: "20px 0 16px" }} />
+            <SectionTitle>{t.income}</SectionTitle>
+            {bedrooms === 1 && (
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-start", background: "#F4EBD6", border: "1px solid #E4D2A6", borderRadius: 10, padding: "9px 11px", marginBottom: 14 }}>
+                <span style={{ color: C.amber, fontWeight: 700, lineHeight: 1.3 }}>!</span>
+                <span style={{ fontSize: 12, color: C.amber, lineHeight: 1.4 }}>{t.estimate1br}</span>
+              </div>
+            )}
+            <YearRibbon seasons={seasons} names={seasonNames} colors={seasonColors} t={t} />
+            {seasons.map((s, i) => (
+              <SeasonCard key={i} name={seasonNames[i]} color={seasonColors[i]} s={s} rev={nf(m.perSeason[i])} t={t}
+                onDays={(v) => editSeason(i, "days", v)} onOcc={(v) => editSeason(i, "occ", v)} onRate={(v) => editSeason(i, "rate", v)} />
+            ))}
+
+            <div style={{ height: 1, background: C.line, margin: "20px 0 16px" }} />
+            <SectionTitle>{t.costs}</SectionTitle>
+            <FeeRow label={t.fMaint} value={fees.maint} onChange={(v) => setFees({ ...fees, maint: v })} />
+            <FeeRow label={t.fLand} value={fees.land} onChange={(v) => setFees({ ...fees, land: v })} />
+            <FeeRow label={t.fCommon} value={fees.common} onChange={(v) => setFees({ ...fees, common: v })} />
+
+            <div style={{ height: 1, background: C.line, margin: "20px 0 16px" }} />
+            <SectionTitle>{t.conciergeTitle}</SectionTitle>
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 10, lineHeight: 1.45 }}>{t.conciergeHint}</div>
+            <Segmented options={[true, false]} value={concierge} onChange={setConcierge} render={(v) => (v ? t.yes : t.no)} />
+          </section>
+
+          {/* ── RESULTS ── */}
+          <section style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <div style={{ ...cardStyle(), background: C.forest, color: "#F1EDE3", textAlign: "center", paddingTop: 30, paddingBottom: 30 }}>
+              <div style={{ fontSize: 12, letterSpacing: ".12em", textTransform: "uppercase", color: C.brassSoft, fontWeight: 600 }}>{t.result}</div>
+              <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: "clamp(56px,13vw,88px)", lineHeight: 1, margin: "10px 0 4px", color: "#fff" }}>
+                {m.yieldPct.toFixed(1)}<span style={{ fontSize: ".42em", verticalAlign: "0.45em", marginLeft: 2 }}>%</span>
+              </div>
+              <div style={{ fontSize: 13.5, color: C.brassSoft, fontWeight: 500 }}>
+                {t.avgOcc} {Math.round(m.avgOcc)}% · {Math.round(m.nights)} {t.nightsYr}
+              </div>
+            </div>
+
+            <div style={cardStyle()}>
+              <StatRow label={t.grossLabel} value={nf(m.gross)} color={C.ocean} />
+              <StatRow label={t.fixedCharges} value={`– ${nf(m.fixed)}`} color={C.red} />
+              {concierge && <StatRow label={t.conciergeLine} value={`– ${nf(m.conciergeFee)}`} color={C.red} />}
+              <div style={{ height: 1, background: C.line, margin: "4px 0" }} />
+              <StatRow label={t.netLabel} value={nf(m.net)} color={C.forest} strong sub={`${nf(m.net / 12)} / ${t.month}`} />
+              <div style={{ marginTop: 20 }}>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 8, fontWeight: 500 }}>{t.breakdown}</div>
+                <div style={{ display: "flex", height: 30, borderRadius: 8, overflow: "hidden", border: `1px solid ${C.line}` }}>
+                  <div style={{ width: `${netShare}%`, background: C.forest, transition: "width .35s ease" }} />
+                  <div style={{ width: `${chargesShare}%`, background: C.brassSoft, transition: "width .35s ease" }} />
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 11.5, color: C.muted }}>
+                  <span><Dot c={C.forest} /> {t.netLabel} · {Math.round(netShare)}%</span>
+                  <span><Dot c={C.brassSoft} /> {t.fixedCharges} · {Math.round(chargesShare)}%</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ ...cardStyle(), display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+              <span style={{ fontSize: 14, color: C.muted, fontWeight: 500 }}>{t.payback}</span>
+              <span style={{ fontFamily: "'Fraunces', serif", fontSize: 30, fontWeight: 600, color: C.brass }}>
+                {m.payback > 0 ? m.payback.toFixed(1) : "—"} <span style={{ fontSize: 15, color: C.muted, fontFamily: "'DM Sans', sans-serif" }}>{t.years}</span>
+              </span>
+            </div>
+
+            <p style={{ fontSize: 12, lineHeight: 1.55, color: C.muted, margin: "0 4px" }}>{t.note}</p>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Ruban annuel ──
+function YearRibbon({ seasons, names, colors, t }) {
+  const total = 365;
+  const used = seasons.reduce((a, s) => a + Math.max(0, s.days), 0);
+  const vacant = Math.max(0, total - used);
+  const segs = seasons.map((s, i) => ({ w: (Math.max(0, s.days) / total) * 100, occ: s.occ, name: names[i], color: colors[i], days: s.days }));
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: ".04em" }}>{t.yearLabel}</div>
+      <div style={{ display: "flex", height: 34, borderRadius: 9, overflow: "hidden", border: `1px solid ${C.line}` }}>
+        {segs.map((seg, i) => (
+          <div key={i} title={`${seg.name} · ${seg.days}${t.days} · ${seg.occ}%`}
+            style={{ width: `${seg.w}%`, background: seg.color, opacity: 0.35 + (seg.occ / 100) * 0.65, transition: "width .3s ease, opacity .3s ease",
+              display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 600 }}>
+            {seg.w > 12 ? `${Math.round(seg.days)}${t.days}` : ""}
+          </div>
+        ))}
+        {vacant > 0 && <div title={t.vacant} style={{ width: `${(vacant / total) * 100}%`, background: "#E7E0D0" }} />}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 8 }}>
+        {names.map((n, i) => (<span key={i} style={{ fontSize: 11, color: C.muted }}><Dot c={colors[i]} /> {n}</span>))}
+        {vacant > 0 && <span style={{ fontSize: 11, color: C.muted }}><Dot c="#E7E0D0" /> {t.vacant}</span>}
+      </div>
+    </div>
+  );
+}
+
+// ── Carte saison ──
+function SeasonCard({ name, color, s, rev, onDays, onOcc, onRate, t }) {
+  return (
+    <div style={{ background: "#fff", border: `1px solid ${C.line}`, borderRadius: 12, padding: "13px 14px", marginBottom: 11 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: C.ink, display: "flex", alignItems: "center" }}><Dot c={color} /> {name}</span>
+        <span style={{ fontSize: 14.5, color: C.brass, fontFamily: "'Fraunces', serif", fontWeight: 600 }}>{rev}</span>
+      </div>
+      <Slider label={t.occLabel} value={s.occ} min={0} max={100} step={5} suffix="%" color={color} onChange={onOcc} />
+      <Slider label={t.rateLabel} value={s.rate} min={30} max={400} step={1} suffix=" €" color={color} onChange={onRate} />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6, marginTop: 8 }}>
+        <span style={{ fontSize: 12, color: C.muted }}>{t.openDays}</span>
+        <input className="sv-daysin" type="number" inputMode="numeric" value={s.days} aria-label={t.openDays}
+          onChange={(e) => onDays(e.target.value === "" ? 0 : Math.max(0, Math.min(365, +e.target.value)))} />
+      </div>
+    </div>
+  );
+}
+function Slider({ label, value, min, max, step, suffix, color, onChange }) {
+  const pct = ((value - min) / (max - min)) * 100;
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 2 }}>
+        <span style={{ fontSize: 13, color: C.muted, fontWeight: 500 }}>{label}</span>
+        <span style={{ fontSize: 14, color: C.forest, fontWeight: 600, fontFamily: "'Fraunces', serif" }}>{value}{suffix}</span>
+      </div>
+      <input className="sv-slider" type="range" min={min} max={max} step={step} value={value}
+        onChange={(e) => onChange(+e.target.value)} aria-label={label}
+        style={{ background: `linear-gradient(to right, ${color} ${pct}%, ${C.line} ${pct}%)` }} />
+    </div>
+  );
+}
+
+// ── Helpers ──
+function cardStyle() {
+  return { background: C.card, border: `1px solid ${C.line}`, borderRadius: 16, padding: "22px 22px", boxShadow: "0 1px 2px rgba(20,32,27,.04)" };
+}
+function SectionTitle({ children }) {
+  return <div style={{ fontSize: 12, letterSpacing: ".1em", textTransform: "uppercase", color: C.brass, fontWeight: 600, marginBottom: 12 }}>{children}</div>;
+}
+function Field({ children }) { return <div style={{ marginBottom: 18 }}>{children}</div>; }
+function Label({ children }) { return <div style={{ fontSize: 14, color: C.ink, fontWeight: 500, marginBottom: 6 }}>{children}</div>; }
+function FeeRow({ label, value, onChange }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 10 }}>
+      <span style={{ fontSize: 14, color: C.ink, fontWeight: 500, flex: 1 }}>{label}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 4, width: 124 }}>
+        <span style={{ color: C.muted, fontSize: 14 }}>€</span>
+        <input className="sv-num" type="number" inputMode="numeric" value={value} aria-label={label}
+          onChange={(e) => onChange(e.target.value === "" ? 0 : Math.max(0, +e.target.value))} />
+      </div>
+    </div>
+  );
+}
+function Segmented({ options, value, onChange, render }) {
+  return (
+    <div style={{ display: "flex", gap: 6, background: C.paper, padding: 4, borderRadius: 12, border: `1px solid ${C.line}` }}>
+      {options.map((o) => {
+        const active = o === value;
+        return (
+          <button key={String(o)} className="sv-seg" onClick={() => onChange(o)}
+            style={{ flex: 1, border: "none", cursor: "pointer", padding: "9px 6px", borderRadius: 9, fontFamily: "inherit",
+              background: active ? C.forest : "transparent", color: active ? "#fff" : C.muted,
+              fontWeight: active ? 600 : 500, fontSize: 14, transition: "background .15s ease, color .15s ease" }}>{render(o)}</button>
+        );
+      })}
+    </div>
+  );
+}
+function StatRow({ label, value, color, sub, strong }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "9px 0" }}>
+      <div>
+        <div style={{ fontSize: strong ? 15 : 14, color: strong ? C.ink : C.muted, fontWeight: strong ? 600 : 500 }}>{label}</div>
+        {sub && <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>{sub}</div>}
+      </div>
+      <div style={{ fontFamily: "'Fraunces', serif", fontSize: strong ? 24 : 19, fontWeight: 600, color: color || C.ink }}>{value}</div>
+    </div>
+  );
+}
+function Dot({ c }) {
+  return <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 99, background: c, marginRight: 5, verticalAlign: "middle" }} />;
+}
+
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+</script>
+</body>
+</html>
